@@ -1,0 +1,18 @@
+CXX     = cl.exe
+CFLAGS  = -O1yig -GAs -Zl -W3 -D_WIN32=0x0501 -D_WIN32_WINNT=0x0501 -D_WIN32_IE=0x0501 -nologo
+LDFLAGS = /link /entry:msvcWinMainCRTStartup /incremental:no /opt:nowin98 kernel32.lib user32.lib version.lib advapi32.lib comctl32.lib
+
+all: out/bootstrap32.exe
+
+out/bootstrap32.exe: out/setup.obj out/setup.res
+	$(CXX) $(CFLAGS) -Fe$@ $** $(LDFLAGS)
+
+out/setup.obj: setup.c
+	$(CXX) $(CFLAGS) -c -Fo$@ -TP setup.c
+
+out/setup.res: setup.rc setup.manifest setup.ico
+	$(RC) -fo $@ setup.rc
+
+clean:
+	del /f out\*.obj out\*.exe out\*.res
+
