@@ -458,6 +458,7 @@ ap.add_argument('--short-inf-name', default='SETUP')
 ap.add_argument('--shortcut', metavar='TARGETFILE')
 ap.add_argument('--with-bootstrapper', default=False, action='store_true')
 ap.add_argument('--advanced-inf', default=False, action='store_true')
+ap.add_argument('--iexpress-binary', metavar='IEXPRESS.EXE', default='IEXPRESS.EXE')
 
 args = ap.parse_args()
 
@@ -497,4 +498,4 @@ if args.make_iexpress is not None:
         s.add_files(os.path.join(tempdir, 'files'))
         s.write_sed_file()
 
-        subprocess.check_call(['IEXPRESS.EXE', '/N', os.path.join(tempdir, 'SETUP.SED')])
+        subprocess.check_call([args.iexpress_binary, '/N', os.path.join(tempdir, 'SETUP.SED')])
