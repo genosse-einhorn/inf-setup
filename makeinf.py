@@ -272,11 +272,9 @@ class InfFileBuilder:
 
             inf.append_to_list_value('DefaultInstall', 'AddReg', 'UninstallRegKeys')
 
-            #[DefaultUninstall]
             for s in self.copysecs:
                 inf.append_to_list_value('DefaultUninstall', 'DelFiles', s.section_title)
 
-            inf.append_to_list_value('DefaultUninstall', 'DelReg', 'UninstallRegKeys')
             inf.append_to_list_value('DefaultUninstall', 'DelReg', 'UninstallRegKeyDel')
 
             if self.advanced_inf:
@@ -302,20 +300,21 @@ class InfFileBuilder:
             inf.add_line('UninstallDeletePnfFile', '{}.PNF,,,7'.format(self.uninstall_id))
             inf.set_value('DestinationDirs', 'UninstallDeletePnfFile', '10,INF')
 
-            inf.add_line('UninstallRegKeys', 'HKLM,"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{}","DisplayName",,"{}"'.format(self.uninstall_id, self.title or self.uninstall_id))
+            inf.add_line('UninstallRegKeys', 'HKLM,"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{}","DisplayName",{},"{}"'.format(self.uninstall_id, 0x4000, self.title or self.uninstall_id))
 
             if self.advanced_inf:
-                inf.add_line('UninstallRegKeys', 'HKLM,"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{}","UninstallString",,"rundll32.exe advpack.dll,LaunchINFSectionEx {}.INF,DefaultUninstall,,0,"'.format(self.uninstall_id, self.uninstall_id))
+                inf.add_line('UninstallRegKeys', 'HKLM,"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{}","UninstallString",{},"rundll32.exe advpack.dll,LaunchINFSectionEx {}.INF,DefaultUninstall,,0,"'.format(self.uninstall_id, 0x4000, self.uninstall_id))
             else:
-                inf.add_line('UninstallRegKeys', 'HKLM,"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{}","UninstallString",,"rundll32.exe setupapi.dll,InstallHinfSection DefaultUninstall 132 %10%\INF\{}.INF"'.format(self.uninstall_id, self.uninstall_id))
+                inf.add_line('UninstallRegKeys', 'HKLM,"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{}","UninstallString",{},"rundll32.exe setupapi.dll,InstallHinfSection DefaultUninstall 132 %10%\INF\{}.INF"'.format(self.uninstall_id, 0x4000, self.uninstall_id))
 
-            inf.add_line('UninstallRegKeys', 'HKLM,"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{}","NoModify",65537,1'.format(self.uninstall_id))
-            inf.add_line('UninstallRegKeys', 'HKLM,"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{}","NoRepair",65537,1'.format(self.uninstall_id))
-            inf.add_line('UninstallRegKeys', 'HKLM,"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{}","EstimatedSize",65537,{}'.format(self.uninstall_id, self.cabfiles.totalsize // 1024))
+            inf.add_line('UninstallRegKeys', 'HKLM,"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{}","NoModify",{},1'.format(self.uninstall_id, 0x10001 | 0x4000))
+            inf.add_line('UninstallRegKeys', 'HKLM,"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{}","NoRepair",{},1'.format(self.uninstall_id, 0x10001 | 0x4000))
+            inf.add_line('UninstallRegKeys', 'HKLM,"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{}","EstimatedSize",{},{}'.format(self.uninstall_id, 0x10001 | 0x4000, self.cabfiles.totalsize // 1024))
             if self.publisher is not None:
-                inf.add_line('UninstallRegKeys', 'HKLM,"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{}","Publisher",,"{}"'.format(self.uninstall_id, self.publisher))
+                inf.add_line('UninstallRegKeys', 'HKLM,"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{}","Publisher",{},"{}"'.format(self.uninstall_id, 0x4000, self.publisher))
 
             inf.add_line('UninstallRegKeyDel', 'HKLM,"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{}"'.format(self.uninstall_id, self.uninstall_id))
+            inf.add_line('UninstallRegKeyDel', 'HKLM,"SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{}"'.format(self.uninstall_id))
 
         # source disks
         inf.set_value('SourceDisksNames', '1', '"Installation Files",,0')
