@@ -200,6 +200,9 @@ class InfFileBuilder:
         self.cabfiles.synth_file(infname + '.INF')
         self.cabfiles.reserve_name('LAYOUT.INF') # for potential floppy distribution
         self.cabfiles.reserve_name(infname + '.EXE') # for potential bootstrapper
+        self.cabfiles.reserve_name('ADVPACK.DLL')  # IEXPRESS might add its own file here
+        self.cabfiles.reserve_name('W95INF16.DLL') # ^
+        self.cabfiles.reserve_name('W95INF32.DLL') # ^
 
     def _process_source_files_recourse(self, dirid, subdir_list, sourcedir):
         t = FileTargetDir(dirid, '\\'.join(subdir_list))
