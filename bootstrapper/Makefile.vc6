@@ -1,6 +1,6 @@
 CXX     = cl.exe
 CFLAGS  = -O1yig -GAs -Zl -W3 -D_WIN32=0x0501 -D_WIN32_WINNT=0x0501 -D_WIN32_IE=0x0501 -nologo
-LDFLAGS = /link /entry:msvcWinMainCRTStartup /incremental:no /opt:nowin98 kernel32.lib user32.lib version.lib advapi32.lib comctl32.lib
+LDFLAGS = /link /entry:msvcWinMainCRTStartup /incremental:no /opt:nowin98 /swaprun:net /swaprun:cd kernel32.lib user32.lib version.lib advapi32.lib comctl32.lib
 
 all: out/bootstrap32.exe
 
