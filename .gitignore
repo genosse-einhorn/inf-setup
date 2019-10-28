@@ -1,2 +1,4 @@
 __pycache__
 *.kdev4
+infgen-*.pyz
+infgen-*.zip
