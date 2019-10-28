@@ -161,6 +161,108 @@ parseCmdlineToArgvA(const char *argstr, int *pargc)
     return argv;
 }
 
+static inline SIZE_T
+quoteArgForCmdlineA(const char *arg, char *buf, SIZE_T bufsize)
+{
+    SIZE_T r = 1;
+#define WRITE(c) do { r++; if (bufsize > 1) { *buf++ = (c); bufsize--; } } while (0)
+
+    WRITE('"');
+
+    while (*arg) {
+        char c = *arg++;
+
+        if (c == '"') {
+            WRITE('\\');
+            WRITE('"');
+        } else if (c == '\\') {
+            SIZE_T b = 1;
+            while (*arg == '\\') {
+                arg++;
+                b++;
+            }
+            if (*arg == '"') {
+                ++arg;
+                for (SIZE_T i = 0; i < b; ++i) {
+                    WRITE('\\'); WRITE('\\');
+                }
+                WRITE('\\');
+                WRITE('"');
+            } else if (*arg == '\0') {
+                for (SIZE_T i = 0; i < b; ++i) {
+                    WRITE('\\'); WRITE('\\');
+                }
+            } else {
+                for (SIZE_T i = 0; i < b; ++i) {
+                    WRITE('\\');
+                }
+            }
+        } else {
+            WRITE(c);
+        }
+    }
+
+    WRITE('"');
+
+#undef WRITE
+
+    if (bufsize > 0)
+        *buf = 0;
+
+    return r;
+}
+
+static inline SIZE_T
+quoteArgForCmdlineW(const WCHAR *arg, WCHAR *buf, SIZE_T bufsize)
+{
+    SIZE_T r = 1;
+#define WRITE(c) do { r++; if (bufsize > 1) { *buf++ = (c); bufsize--; } } while (0)
+
+    WRITE('"');
+
+    while (*arg) {
+        WCHAR c = *arg++;
+
+        if (c == '"') {
+            WRITE('\\');
+            WRITE('"');
+        } else if (c == '\\') {
+            SIZE_T b = 1;
+            while (*arg == '\\') {
+                arg++;
+                b++;
+            }
+            if (*arg == '"') {
+                ++arg;
+                for (SIZE_T i = 0; i < b; ++i) {
+                    WRITE('\\'); WRITE('\\');
+                }
+                WRITE('\\');
+                WRITE('"');
+            } else if (*arg == '\0') {
+                for (SIZE_T i = 0; i < b; ++i) {
+                    WRITE('\\'); WRITE('\\');
+                }
+            } else {
+                for (SIZE_T i = 0; i < b; ++i) {
+                    WRITE('\\');
+                }
+            }
+        } else {
+            WRITE(c);
+        }
+    }
+
+    WRITE('"');
+
+#undef WRITE
+
+    if (bufsize > 0)
+        *buf = 0;
+
+    return r;
+}
+
 static inline bool
 isRunningAsAdmin()
 {
@@ -279,14 +381,17 @@ launchRundllA(const char *infpath, int flags, const char *rebootmode)
     char sysdir[MAX_PATH];
     GetWindowsDirectoryA(sysdir, MAX_PATH);
 
+    char infpathQuoted[2*MAX_PATH];
+    quoteArgForCmdlineA(infpath, infpathQuoted, sizeof(infpathQuoted)/sizeof(infpathQuoted[0]));
+
     char rundllbuf[1024];
     char advinfbuf[100] = "";
     GetPrivateProfileStringA("Version", "AdvancedINF", "", advinfbuf, sizeof(advinfbuf)/sizeof(advinfbuf[0]), infpath);
     if (lstrlenA(advinfbuf) > 0) {
-        wsprintfA(rundllbuf, "%s\\rundll32.exe advpack.dll,LaunchINFSectionEx \"%s\",DefaultInstall,,%d,%s", sysdir, infpath, flags, rebootmode);
+        wsprintfA(rundllbuf, "\"%s\\rundll32.exe\" advpack.dll,LaunchINFSectionEx %s,DefaultInstall,,%d,%s", sysdir, infpathQuoted, flags, rebootmode);
     } else {
         flags = 128 + (lstrcmpA(rebootmode, "N") ? 4 : 0);
-        wsprintfA(rundllbuf, "%s\\rundll32.exe setupapi.dll,InstallHinfSection DefaultInstall %d %s", sysdir, flags, infpath);
+        wsprintfA(rundllbuf, "\"%s\\rundll32.exe\" setupapi.dll,InstallHinfSection DefaultInstall %d %s", sysdir, flags, infpath);
     }
 
     PROCESS_INFORMATION pi;
@@ -343,28 +448,21 @@ launchRundllW(const WCHAR *infpath, int flags, const char *rebootmode)
     // don't load it directly, because the uninstaller is using rundll32 too
     // and we don't want any compat shims being applied to the installer but not the uninstaller
 
-    // Load 64bit rundll32 if available. On Windows 10, the Settings app will launch
-    // the uninstall rundll32.exe as 64bit, even for 32bit apps and then files and
-    // registry keys are not removed correctly. Windows 7 to 8.1 correctly launch
-    // a 32bit rundll32.exe for 32bit uninstall information, BTW.
-    WCHAR rundllpath[MAX_PATH];
-    GetWindowsDirectoryW(rundllpath, MAX_PATH);
-    lstrcatW(rundllpath, L"\\SysNative\\rundll32.exe");
+    WCHAR sysdir[MAX_PATH];
+    GetSystemDirectoryW(sysdir, MAX_PATH);
 
-    if (!fileExistsW(rundllpath)) {
-        GetSystemDirectoryW(rundllpath, MAX_PATH);
-        lstrcatW(rundllpath, L"\\rundll32.exe");
-    }
+    WCHAR infpathQuoted[2*MAX_PATH];
+    quoteArgForCmdlineW(infpath, infpathQuoted, sizeof(infpathQuoted)/sizeof(infpathQuoted[0]));
 
     WCHAR rundllbuf[1024];
     WCHAR advinfbuf[100] = L"";
     GetPrivateProfileStringW(L"Version", L"AdvancedINF", L"", advinfbuf, sizeof(advinfbuf)/sizeof(advinfbuf[0]), infpath);
 
     if (lstrlenW(advinfbuf) > 0) {
-        wsprintfW(rundllbuf, L"%s advpack.dll,LaunchINFSectionEx \"%s\",DefaultInstall,,%d,%S", rundllpath, infpath, flags, rebootmode);
+        wsprintfW(rundllbuf, L"\"%s\\rundll32.exe\" advpack.dll,LaunchINFSectionEx %s,DefaultInstall,,%d,%S", sysdir, infpathQuoted, flags, rebootmode);
     } else {
         flags = 128 + (lstrcmpA(rebootmode, "N") ? 4 : 0);
-        wsprintfW(rundllbuf, L"%s setupapi.dll,InstallHinfSection DefaultInstall %d %s", rundllpath, flags, infpath);
+        wsprintfW(rundllbuf, L"\"%s\\rundll32.exe\" setupapi.dll,InstallHinfSection DefaultInstall %d %s", sysdir, flags, infpath);
     }
 
     PROCESS_INFORMATION pi;
