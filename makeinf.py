@@ -1,11 +1,13 @@
 #!/usr/bin/python3
 
 from argparse import ArgumentParser
+from configparser import ConfigParser
 import os
 import shutil
 import pkgutil
 import tempfile
 import subprocess
+import collections
 
 
 def is_ascii(s):
@@ -57,6 +59,11 @@ class FileTargetDir:
             yield '{},{},,7'.format(quoted_str(target), quoted_str(source))
 
     @property
+    def source_files(self):
+        for target, source in self.files.items():
+            yield source
+
+    @property
     def destination_dir(self):
         return '{},{}'.format(self.dirid, quoted_str(self.subdir))
 
@@ -76,6 +83,7 @@ class SourceFileCollector:
         self.res_names = []
         self.outdir = outdir
         self.totalsize = 0
+        self.disk_associations = {}
 
     def synth_file(self, fname):
         self.out_files.append(fname)
@@ -100,17 +108,20 @@ class SourceFileCollector:
 
         return dosname
 
+    def set_file_disk(self, filename, diskno):
+        self.disk_associations[filename] = diskno
+
     @property
     def source_disk_lines(self):
         for f in self.out_files:
-            yield '{}=1'.format(f)
+            yield '{}={}'.format(f, self.disk_associations.get(f, '1'))
 
 class InfLikeFileBuilder:
     def __init__(self):
         self.clear()
 
     def clear(self):
-        self._data = {} # dict[str, list[str]]
+        self._data = collections.OrderedDict() # dict[str, list[str]]
 
     def add_whole_section(self, section, lines):
         self._data[section] = list(lines)
@@ -179,7 +190,7 @@ class InfLikeFileBuilder:
         else:
             encoding = 'utf-16'
 
-        with open(filepath, 'w', encoding=encoding) as f:
+        with open(filepath, 'w', encoding=encoding, newline='') as f:
             f.write(s)
 
 class InfFileBuilder:
@@ -187,6 +198,7 @@ class InfFileBuilder:
         self.outdir = outdir
         self.infname = infname
         self.cabfiles = SourceFileCollector(outdir)
+        self.disks = {'1': 'Installation Files'}
         self.copysecs = []
         self.uninstall_id = None
         self.title = None
@@ -198,7 +210,6 @@ class InfFileBuilder:
         self.advanced_inf = False
 
         self.cabfiles.synth_file(infname + '.INF')
-        self.cabfiles.reserve_name('LAYOUT.INF') # for potential floppy distribution
         self.cabfiles.reserve_name(infname + '.EXE') # for potential bootstrapper
         self.cabfiles.reserve_name('ADVPACK.DLL')  # IEXPRESS might add its own file here
         self.cabfiles.reserve_name('W95INF16.DLL') # ^
@@ -320,7 +331,8 @@ class InfFileBuilder:
             inf.add_line('UninstallRegKeyDel', 'HKLM,"SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{}"'.format(self.uninstall_id))
 
         # source disks
-        inf.set_value('SourceDisksNames', '1', '"Installation Files",,0')
+        for no, name in self.disks.items():
+            inf.set_value('SourceDisksNames', no, '{},{}{}.CAB,0'.format(quoted_str(name), self.infname, no))
         inf.add_whole_section('SourceDisksFiles', self.cabfiles.source_disk_lines)
 
         # shortcut
@@ -348,6 +360,30 @@ class InfFileBuilder:
         if self.copy_bootstrapper:
             with open(os.path.join(self.outdir, self.infname + '.EXE'), 'wb') as f:
                 f.write(load_data(__package__, 'res', 'bootstrap32.exe'))
+
+    def fake_floppy_disks(self):
+        # Helper function for first stage of floppy distribution:
+        # Fake some floppy entries which will later be replaced with real ones
+        # after MAKECAB generates the floppy layout for us.
+        # These entries must occupy at least as much space in the INF file
+        # as the real entries, since MAKECAB uses every byte available
+        # on the first floppy for the CAB files.
+        count = self.cabfiles.totalsize // (1024 * 1440) + 2
+
+        self.disks = collections.OrderedDict()
+        for i in range(1, count+1):
+            self.disks[str(i)] = '{} Disk {}'.format(self.title or self.infname, i)
+
+        for f in self.cabfiles.out_files:
+            self.cabfiles.set_file_disk(f, count)
+
+    def fill_disks_from_makecab(self, info):
+        self.disks = collections.OrderedDict()
+        for no, title in info.disks.items():
+            self.disks[no] = '{} Disk {}'.format(self.title or self.infname, no)
+
+        for f, n in info.files.items():
+            self.cabfiles.set_file_disk(f, n)
 
 class SedFileBuilder:
     def __init__(self, sedfilename, exename):
@@ -419,6 +455,93 @@ class SedFileBuilder:
 
         sed.write_to_file(self.sedname)
 
+class FloppyDdfFileBuilder:
+    def __init__(self, cabdir):
+        self.cabdir = cabdir
+        self.infdir = '!!BUG!!'
+        self.noncabfiles = []
+        self.cabfiles = []
+        self.title = 'SETUP'
+        self.infname = 'SETUP'
+
+    def load_files_from_infbuilder(self, infbuilder):
+        self.noncabfiles = []
+        self.cabfiles = []
+        self.infdir = infbuilder.outdir
+        self.title = infbuilder.title or 'SETUP'
+        self.infname = infbuilder.infname
+
+        if infbuilder.copy_bootstrapper:
+            self.noncabfiles.append(infbuilder.infname + '.EXE')
+
+        self.noncabfiles.append(infbuilder.infname + '.INF')
+
+        for s in infbuilder.copysecs:
+            for f in s.source_files:
+                self.cabfiles.append(f)
+
+    @property
+    def ddf_file_name(self):
+        return os.path.join(self.cabdir, 'SETUP.DDF')
+
+    @property
+    def inf_file_name(self):
+        return os.path.join(self.cabdir, 'SETUP.INF')
+
+    def write_ddf_file(self):
+        l = []
+
+        l.append('.OPTION EXPLICIT')
+        l.append('.Set DiskLabelTemplate={} Disk *'.format(self.title))
+        l.append('.Set CabinetNameTemplate={}*.CAB'.format(self.infname))
+        l.append('.Set DiskDirectoryTemplate=Disk*')
+        l.append('.Set MaxDiskSize=1.44M')
+        l.append('.Set GenerateInf=ON')
+        l.append('.Set InfFileName=SETUP.INF')
+        l.append('.Set RptFileName=SETUP.RPT')
+        l.append('.Set InfDiskHeader="[disk list]"')
+        l.append('.Set InfDiskLineFormat="*disk#*=*label*"')
+        l.append('.Set InfCabinetHeader="[cabinet list]"')
+        l.append('.Set InfCabinetLineFormat="*cab#*=*disk#*,*cabfile*"')
+        l.append('.Set InfFileHeader="[file list]"')
+        l.append('.Set InfFileLineFormat="*file*=*disk#*"')
+        l.append('.Set SourceDir="{}"'.format(self.infdir))
+        l.append('')
+        l.append('.Set Cabinet=Off')
+        l.append('.Set Compress=Off')
+        for f in self.noncabfiles:
+            l.append(f)
+        l.append('')
+        l.append('.Set Cabinet=On')
+        l.append('.Set Compress=On')
+        for f in self.cabfiles:
+            l.append(f)
+
+        s = '\r\n'.join(l)
+
+        if is_ascii(s):
+            encoding = 'ASCII'
+        else:
+            encoding = 'utf-16'
+
+        with open(self.ddf_file_name, 'w', encoding=encoding, newline='') as f:
+            f.write(s)
+
+class MakecabInfData:
+    def __init__(self, inffilename):
+        self.disks = collections.OrderedDict()
+        self.files = collections.OrderedDict()
+
+        cp = ConfigParser()
+        cp.optionxform = str
+        cp.read(inffilename)
+
+        for num, title in cp.items('disk list'):
+            self.disks[num] = title
+
+        for f, num in cp.items('file list'):
+            self.files[f] = num
+
 
 def initialize_inf_builder(outdir, args):
     b = InfFileBuilder(outdir, args.short_inf_name)
@@ -453,6 +576,7 @@ ap = ArgumentParser()
 ap.add_argument('--source-dir', required=True)
 ap.add_argument('--make-filedist', metavar='OUTDIR')
 ap.add_argument('--make-iexpress', metavar='OUTFILE.EXE')
+ap.add_argument('--make-floppydist', metavar='OUTDIR')
 ap.add_argument('--with-uninstall', metavar='ID')
 ap.add_argument('--publisher')
 ap.add_argument('--title')
@@ -464,8 +588,8 @@ ap.add_argument('--iexpress-binary', metavar='IEXPRESS.EXE', default='IEXPRESS.E
 
 args = ap.parse_args()
 
-if args.make_filedist is None and args.make_iexpress is None:
-    raise Exception('Need at least one of --make-filedist or --make-iexpress')
+if args.make_filedist is None and args.make_iexpress is None and args.make_floppydist is None:
+    raise Exception('Need at least one of --make-filedist or --make-iexpress or --make-floppydist')
 
 if args.make_filedist is not None:
     os.makedirs(args.make_filedist, exist_ok=True)
@@ -501,3 +625,21 @@ if args.make_iexpress is not None:
         s.write_sed_file()
 
         subprocess.check_call([args.iexpress_binary, '/N', os.path.join(tempdir, 'SETUP.SED')])
+
+if args.make_floppydist is not None:
+    with tempfile.TemporaryDirectory() as tempdir:
+        os.makedirs(args.make_floppydist, exist_ok=True)
+
+        b = initialize_inf_builder(tempdir, args)
+        b.fake_floppy_disks()
+        b.write_inf_file()
+
+        d = FloppyDdfFileBuilder(args.make_floppydist)
+        d.load_files_from_infbuilder(b)
+        d.write_ddf_file()
+
+        subprocess.check_call(['MAKECAB.EXE', '/F', os.path.join(d.ddf_file_name)], cwd=args.make_floppydist)
+
+        b.fill_disks_from_makecab(MakecabInfData(d.inf_file_name))
+        b.outdir = os.path.join(args.make_floppydist, 'Disk1')
+        b.write_inf_file()

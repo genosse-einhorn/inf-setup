@@ -7,17 +7,20 @@ A small python script which creates a `.INF` file for software installation. **T
 `.INF` files were introduced during the Win95 era. Apart from .INF files for drivers, things are basically on life support.
 You should expect INF-based installations to become more buggy over time.
 
-The tool `makeinf.py` takes a directory of files and creates a .INF file to install these files. It can place the files into a directory
-(to be copied on a CD or whatever) or use `IEXPRESS.EXE` to create a self-extracting archive. Also, a *bootstrap EXE* is included
-which will launch the INF file using the right DLL and makes sure to install with administrator privileges under Vista or newer.
+The tool `makeinf.py` takes a directory of files and creates a .INF file to install these files.
+It can place the files into a directory (to be copied on a CD or whatever), pack them in CAB files
+and distribute them onto floppies, or use `IEXPRESS.EXE` to create a self-extracting archive.
+Also, a *bootstrap EXE* is included which will launch the INF file using the right DLL and
+makes sure to install with administrator privileges under Vista or newer.
 
 # Requirements
 
 The python script needs at least Python 3.4 (upgrading to a newer version of Python is not planned for the foreseeable future so that
 it will continue to run on Windows XP).
 
-Generating a self-extracting archive exe requires `IEXPRESS` which is only available on Windows,
-the other features work fine under other operating systems.
+Generating a self-extracting archive exe requires `IEXPRESS` which is only available on Windows.
+Generating a floppy distribution requires `MAKECAB`, which is also only available on Windows.
+The other features work fine under other operating systems.
 
 The bootstrap executable is compiled using MSVC6, and can also be compiled with MinGW on Linux.
 
@@ -75,6 +78,12 @@ given directory. The source files will be renamed to 8.3 filenames.
 Use `IEXPRESS` to create a self extracting executable.
 
 You can use `--iexpress-binary` to specify a custom version of `IEXPRESS.EXE`.
+
+### --make-floppydist=OUTDIR
+
+Use `MAKECAB` to compress all source files and split the CAB files onto multiple floppy disks.
+
+Subdirectories with the files for each floppy disk will be created under OUTDIR.
 
 # Advanced INF
 
