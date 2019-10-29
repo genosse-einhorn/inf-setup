@@ -463,6 +463,7 @@ class FloppyDdfFileBuilder:
         self.cabfiles = []
         self.title = 'SETUP'
         self.infname = 'SETUP'
+        self.compress = True
 
     def load_files_from_infbuilder(self, infbuilder):
         self.noncabfiles = []
@@ -513,7 +514,11 @@ class FloppyDdfFileBuilder:
             l.append(f)
         l.append('')
         l.append('.Set Cabinet=On')
-        l.append('.Set Compress=On')
+        l.append('.Set FolderSizeThreshold=1000000')
+        if self.compress:
+            l.append('.Set Compress=On')
+        else:
+            l.append('.Set Compress=Off')
         for f in self.cabfiles:
             l.append(f)
 
@@ -585,6 +590,7 @@ ap.add_argument('--shortcut', metavar='TARGETFILE')
 ap.add_argument('--with-bootstrapper', default=False, action='store_true')
 ap.add_argument('--advanced-inf', default=False, action='store_true')
 ap.add_argument('--iexpress-binary', metavar='IEXPRESS.EXE', default='IEXPRESS.EXE')
+ap.add_argument('--no-cab-compress', action='store_true', default=False)
 
 args = ap.parse_args()
 
@@ -635,6 +641,7 @@ if args.make_floppydist is not None:
         b.write_inf_file()
 
         d = FloppyDdfFileBuilder(args.make_floppydist)
+        d.compress = not args.no_cab_compress
         d.load_files_from_infbuilder(b)
         d.write_ddf_file()
 

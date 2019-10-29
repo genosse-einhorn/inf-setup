@@ -1,0 +1,16 @@
+CXX     = cl.exe
+CFLAGS  = -O1yig -GAs -Zl -W3 -D_WIN32=0x0501 -D_WIN32_WINNT=0x0501 -D_WIN32_IE=0x0501 -nologo
+LDFLAGS = /link /entry:msvcWinMainCRTStartup /incremental:no /opt:nowin98 /subsystem:windows kernel32.lib user32.lib
+
+hello.exe: hello.obj hello.res
+	$(CXX) $(CFLAGS) -Fe$@ $** $(LDFLAGS)
+
+hello.obj: hello.c
+	$(CXX) $(CFLAGS) -c -Fo$@ -TP hello.c
+
+hello.res: hello.rc hello.ico
+	$(RC) -fo $@ hello.rc
+
+clean:
+	del /f *.obj *.exe *.res
+
